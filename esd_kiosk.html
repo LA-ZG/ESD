@@ -9,418 +9,426 @@
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
-
 :root{
   --green:#16a34a;--green-bg:#052e16;--green-light:#22c55e;
   --red:#dc2626;--red-bg:#450a0a;--red-light:#f87171;
   --blue:#2563eb;--slate:#1e293b;--slate-dark:#0f172a;
   --text:#f1f5f9;--muted:#64748b;
 }
-
-html,body{width:100%;height:100%;overflow:hidden;background:var(--slate-dark)}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--slate-dark);color:var(--text);font-family:-apple-system,sans-serif}
 
 /* ── LAYOUT ────────────────────────────────────────────────── */
 #app{display:flex;width:100%;height:100%}
 
+/* LEFT: Kamera */
 #cam-panel{
   flex:0 0 50%;position:relative;background:#000;
   display:flex;align-items:center;justify-content:center;overflow:hidden
 }
-#videoEl{width:100%;height:100%;object-fit:cover;display:block}
+#videoEl{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;display:block
+}
+#scanCanvas{display:none}
 
-.scan-box{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  pointer-events:none
+.scan-overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;gap:8px
 }
 .scan-frame{
-  width:55%;height:40%;border:2px solid rgba(255,255,255,.6);border-radius:10px;
-  box-shadow:0 0 0 9999px rgba(0,0,0,.45);position:relative
+  width:60%;height:38%;border:2px solid rgba(255,255,255,.7);
+  border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.4);position:relative;overflow:hidden
 }
 .scan-line{
-  position:absolute;top:0;left:0;right:0;height:2px;background:var(--green-light);
-  animation:scanLine 2s linear infinite;opacity:.8
+  position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--green-light);animation:scanMove 1.8s linear infinite
 }
-@keyframes scanLine{0%{top:0}100%{top:100%}}
+@keyframes scanMove{0%{top:0%}100%{top:100%}}
+.cam-hint{font-size:10px;color:rgba(255,255,255,.5);letter-spacing:.04em}
 
-.cam-label{
-  position:absolute;bottom:8px;left:0;right:0;text-align:center;
-  font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.05em
+/* cam-status badge */
+.cam-status{
+  position:absolute;top:6px;left:6px;font-size:10px;
+  background:rgba(0,0,0,.6);color:rgba(255,255,255,.5);
+  padding:2px 7px;border-radius:10px
 }
 
-/* ── STATUS PANEL ──────────────────────────────────────────── */
+/* RIGHT: Status */
 #status-panel{
   flex:1;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:16px 20px;position:relative
+  justify-content:center;padding:14px 18px;position:relative;gap:0
 }
 
-/* screens */
 .screen{display:none;flex-direction:column;align-items:center;
-  justify-content:center;width:100%;gap:10px;text-align:center}
+  width:100%;gap:10px;text-align:center}
 .screen.active{display:flex}
 
-/* ── IDLE ─────────────────────────────── */
-#screen-idle{gap:8px}
-.idle-icon{font-size:52px;line-height:1}
-.idle-title{font-size:20px;font-weight:700;color:var(--text);line-height:1.2}
-.idle-sub{font-size:12px;color:var(--muted);margin-top:2px}
-.mic-indicator{
-  display:flex;align-items:center;gap:6px;margin-top:6px;
-  font-size:11px;color:var(--muted)
-}
-.mic-dot{width:8px;height:8px;border-radius:50%;background:var(--green-light);
-  animation:pulse 1.5s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
-.audio-bar{
-  display:flex;gap:2px;align-items:flex-end;height:20px
-}
-.audio-bar span{
-  width:3px;background:var(--muted);border-radius:2px;transition:height .1s
-}
+/* ── IDLE ───────────────────────────────────────────── */
+.idle-icon{font-size:48px;line-height:1}
+.idle-title{font-size:20px;font-weight:800;color:var(--text)}
+.idle-sub{font-size:12px;color:var(--muted)}
+.mic-row{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;color:var(--muted)}
+.mic-dot{width:8px;height:8px;border-radius:50%;background:var(--green-light);animation:blink1 1.4s ease-in-out infinite}
+@keyframes blink1{0%,100%{opacity:1}50%{opacity:.3}}
+.audio-bars{display:flex;gap:2px;align-items:flex-end;height:18px}
+.audio-bars span{width:3px;background:var(--muted);border-radius:2px;transition:height .08s;height:4px}
 
-/* ── SUCCESS ──────────────────────────── */
-#screen-success{background:var(--green-bg);border-radius:12px;padding:14px;width:100%}
+/* beep status */
+.beep-status{
+  font-size:11px;padding:3px 10px;border-radius:12px;
+  background:rgba(255,255,255,.07);color:var(--muted);margin-top:2px;
+  transition:all .3s
+}
+.beep-status.waiting{background:rgba(234,179,8,.15);color:#eab308}
+
+/* ── SUCCESS ────────────────────────────────────────── */
+#screen-success{
+  background:var(--green-bg);border-radius:12px;
+  padding:14px 12px;width:100%;gap:8px
+}
 .ok-badge{
-  background:var(--green);color:#fff;font-size:12px;font-weight:700;
-  padding:3px 10px;border-radius:20px;letter-spacing:.05em
+  background:var(--green);color:#fff;font-size:11px;font-weight:700;
+  padding:2px 10px;border-radius:20px;letter-spacing:.05em;align-self:center
 }
-.ok-title{font-size:18px;font-weight:800;color:var(--green-light)}
+.ok-title{font-size:17px;font-weight:800;color:var(--green-light)}
 
-/* Timer ring */
-.timer-wrap{position:relative;width:64px;height:64px}
-.timer-wrap svg{width:64px;height:64px;transform:rotate(-90deg)}
-.timer-track{fill:none;stroke:rgba(255,255,255,.15);stroke-width:5}
-.timer-ring{
-  fill:none;stroke:var(--green-light);stroke-width:5;
-  stroke-linecap:round;
-  stroke-dasharray:170;stroke-dashoffset:0;
-  transition:stroke-dashoffset 1s linear
+/* Timer */
+.timer-wrap{position:relative;width:58px;height:58px;flex-shrink:0}
+.timer-wrap svg{width:58px;height:58px;transform:rotate(-90deg)}
+.t-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:5}
+.t-ring{
+  fill:none;stroke:var(--green-light);stroke-width:5;stroke-linecap:round;
+  stroke-dasharray:138;stroke-dashoffset:0;transition:stroke-dashoffset 1s linear
 }
 .timer-num{
   position:absolute;inset:0;display:flex;align-items:center;
-  justify-content:center;font-size:16px;font-weight:700;color:var(--text)
+  justify-content:center;font-size:15px;font-weight:800;color:var(--text)
 }
 
-.field-label{font-size:10px;color:var(--muted);text-align:left;width:100%;margin-bottom:2px}
-input[type=text]{
-  width:100%;padding:9px 12px;background:rgba(255,255,255,.08);
+.field-lbl{font-size:10px;color:var(--muted);text-align:left;width:100%;margin-bottom:2px}
+input[type=text],input[type=number]{
+  width:100%;padding:8px 11px;background:rgba(255,255,255,.08);
   border:1.5px solid rgba(255,255,255,.15);border-radius:8px;
-  color:var(--text);font-size:15px;-webkit-user-select:auto;user-select:auto;
-  outline:none;transition:border-color .2s
+  color:var(--text);font-size:15px;outline:none;
+  -webkit-user-select:auto;user-select:auto;transition:border-color .2s
 }
-input[type=text]:focus{border-color:var(--green-light)}
-input.flash{border-color:var(--green-light);background:rgba(34,197,94,.15)}
+input:focus{border-color:var(--green-light)}
+input.flash{border-color:var(--green-light)!important;background:rgba(34,197,94,.18)!important}
 
-.btn{
-  width:100%;padding:11px;border:none;border-radius:8px;
-  font-size:15px;font-weight:700;cursor:pointer;transition:opacity .15s
+.btn-send{
+  width:100%;padding:10px;border:none;border-radius:8px;
+  background:var(--green);color:#fff;font-size:15px;font-weight:700;
+  cursor:pointer;transition:opacity .15s
 }
-.btn:active{opacity:.75}
-.btn-send{background:var(--green);color:#fff}
-.btn-send:disabled{background:var(--muted);cursor:default}
+.btn-send:disabled{background:var(--muted)}
+.btn-send:active{opacity:.75}
 
-/* ── FAIL ─────────────────────────────── */
-#screen-fail{background:var(--red-bg);border-radius:12px;padding:14px;width:100%}
-.fail-icon{font-size:48px;line-height:1}
+/* ── FAIL ───────────────────────────────────────────── */
+#screen-fail{
+  background:var(--red-bg);border-radius:12px;
+  padding:16px 12px;width:100%;gap:8px
+}
+.fail-icon{font-size:44px;line-height:1}
 .fail-title{font-size:17px;font-weight:800;color:var(--red-light)}
 .fail-sub{font-size:12px;color:rgba(255,255,255,.6)}
 .fail-back{font-size:11px;color:var(--muted)}
 
-/* ── START OVERLAY ────────────────────── */
+/* ── START OVERLAY ──────────────────────────────────── */
 #start-overlay{
-  position:fixed;inset:0;background:var(--slate-dark);
+  position:fixed;inset:0;background:var(--slate-dark);z-index:200;
   display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:16px;z-index:200
+  justify-content:center;gap:14px;text-align:center;padding:20px
 }
-.start-title{font-size:22px;font-weight:800;color:var(--text)}
-.start-sub{font-size:13px;color:var(--muted);text-align:center;max-width:260px}
+.start-icon{font-size:52px}
+.start-title{font-size:22px;font-weight:800}
+.start-sub{font-size:13px;color:var(--muted);max-width:270px;line-height:1.5}
 .btn-start{
-  padding:14px 36px;background:var(--blue);color:#fff;border:none;
-  border-radius:10px;font-size:17px;font-weight:700;cursor:pointer
+  padding:14px 38px;background:var(--blue);color:#fff;border:none;
+  border-radius:12px;font-size:17px;font-weight:700;cursor:pointer
 }
 
-/* ── SETTINGS ─────────────────────────── */
+/* ── SETTINGS ───────────────────────────────────────── */
 #settings-btn{
-  position:absolute;top:8px;right:8px;background:rgba(255,255,255,.08);
-  border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;
-  font-size:14px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center
+  position:absolute;top:7px;right:7px;background:rgba(255,255,255,.08);
+  border:none;color:var(--muted);width:26px;height:26px;border-radius:50%;
+  font-size:13px;cursor:pointer;z-index:10;
+  display:flex;align-items:center;justify-content:center
 }
 #settings-modal{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);
   z-index:300;align-items:center;justify-content:center
 }
 #settings-modal.open{display:flex}
-.settings-box{
-  background:#1e293b;border-radius:14px;padding:20px;width:90%;max-width:380px;
-  display:flex;flex-direction:column;gap:12px;max-height:90vh;overflow-y:auto
+.set-box{
+  background:#1e293b;border-radius:14px;padding:20px;
+  width:92%;max-width:360px;display:flex;flex-direction:column;
+  gap:12px;max-height:92vh;overflow-y:auto
 }
-.settings-title{font-size:16px;font-weight:700;color:var(--text)}
-.set-label{font-size:11px;color:var(--muted);margin-bottom:3px}
-.set-row{display:flex;gap:8px}
-.btn-cal{
-  flex:1;padding:9px 6px;border:1.5px solid rgba(255,255,255,.15);
-  background:rgba(255,255,255,.06);color:var(--text);border-radius:8px;
-  font-size:12px;font-weight:600;cursor:pointer
-}
-.btn-cal.recording{border-color:var(--red-light);color:var(--red-light);animation:blink .6s step-end infinite}
-@keyframes blink{50%{opacity:.3}}
-.freq-display{
-  font-size:11px;color:var(--muted);text-align:center;margin-top:2px;min-height:14px
-}
-.btn-save{padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;
-  font-size:14px;font-weight:700;cursor:pointer}
-.btn-close{padding:8px;background:transparent;border:1.5px solid rgba(255,255,255,.15);
-  color:var(--muted);border-radius:8px;font-size:13px;cursor:pointer}
+.set-title{font-size:15px;font-weight:700}
+.set-lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
 .sep{height:1px;background:rgba(255,255,255,.08)}
+.row{display:flex;gap:8px}
+.btn-save{flex:2;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-cls{flex:1;padding:10px;background:transparent;border:1.5px solid rgba(255,255,255,.15);color:var(--muted);border-radius:8px;font-size:13px;cursor:pointer}
 
-/* ── TOAST ────────────────────────────── */
+/* ── TOAST ──────────────────────────────────────────── */
 #toast{
-  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
-  background:#334155;color:var(--text);padding:8px 18px;border-radius:20px;
-  font-size:12px;opacity:0;transition:opacity .3s;z-index:400;white-space:nowrap
+  position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  background:#334155;color:var(--text);padding:7px 16px;
+  border-radius:20px;font-size:12px;opacity:0;transition:opacity .3s;
+  z-index:400;white-space:nowrap;pointer-events:none
 }
 #toast.show{opacity:1}
 </style>
 </head>
 <body>
 
-<!-- START OVERLAY (iOS AudioContext braucht User-Geste) -->
+<!-- START OVERLAY -->
 <div id="start-overlay">
-  <div style="font-size:48px">🛡️</div>
+  <div class="start-icon">🛡️</div>
   <div class="start-title">ESD Kiosk</div>
-  <div class="start-sub">Mikrofon und Kamera werden benötigt.<br>Bitte Berechtigungen erlauben.</div>
-  <button class="btn-start" onclick="startApp()">App starten</button>
+  <div class="start-sub">Mikrofon &amp; Kamera werden benötigt.<br>Bitte beide Berechtigungen erlauben.</div>
+  <button class="btn-start" id="startBtn" onclick="startApp()">App starten</button>
+  <div id="start-err" style="font-size:12px;color:var(--red-light);min-height:16px"></div>
 </div>
 
-<!-- SETTINGS MODAL -->
+<!-- SETTINGS -->
 <div id="settings-modal">
-  <div class="settings-box">
-    <div class="settings-title">⚙️ Einstellungen</div>
+  <div class="set-box">
+    <div class="set-title">⚙️ Einstellungen</div>
     <div>
-      <div class="set-label">Power Automate Webhook URL</div>
-      <input type="text" id="set-webhook" placeholder="https://prod-xx.westeurope.logic.azure.com/..."
-        style="font-size:11px;color:#94a3b8">
+      <div class="set-lbl">Power Automate Webhook URL</div>
+      <input type="text" id="set-webhook" placeholder="https://prod-xx.westeurope.logic.azure.com/..." style="font-size:11px">
     </div>
     <div class="sep"></div>
     <div>
-      <div class="set-label">Piepton kalibrieren (3 Sek. nach Klick ESD-Tester auslösen)</div>
-      <div class="set-row">
-        <button class="btn-cal" id="cal-good-btn" onclick="calibrate('good')">🟢 GUT kalibrieren</button>
-        <button class="btn-cal" id="cal-bad-btn"  onclick="calibrate('bad')">🔴 SCHLECHT kalibrieren</button>
+      <div class="set-lbl">Piepton-Erkennung (Feinabstimmung)</div>
+      <div class="row" style="align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">Frequenz Hz:</span>
+        <input type="number" id="set-freq" value="2100" style="width:70px;text-align:center">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">±Toleranz:</span>
+        <input type="number" id="set-tol" value="150" style="width:60px;text-align:center">
       </div>
-      <div class="freq-display" id="freq-display">
-        GUT: <span id="freq-good-val">–</span> Hz &nbsp;|&nbsp; SCHLECHT: <span id="freq-bad-val">–</span> Hz
-      </div>
-    </div>
-    <div class="sep"></div>
-    <div>
-      <div class="set-label">Erkennungs-Empfindlichkeit</div>
-      <div class="set-row" style="align-items:center;gap:10px">
-        <span style="font-size:11px;color:var(--muted);flex:0 0 auto">Toleranz ±Hz:</span>
-        <input type="text" id="set-tolerance" style="width:60px;text-align:center" value="150">
-        <span style="font-size:11px;color:var(--muted);flex:0 0 auto">Min-Dauer ms:</span>
-        <input type="text" id="set-duration" style="width:60px;text-align:center" value="300">
+      <div style="margin-top:6px" class="row" style="align-items:center;gap:10px">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">Fenster max. Sek:</span>
+        <input type="number" id="set-window" value="2.5" step="0.1" style="width:60px;text-align:center">
       </div>
     </div>
     <div class="sep"></div>
-    <div style="display:flex;gap:8px">
+    <div class="row">
       <button class="btn-save" onclick="saveSettings()">Speichern</button>
-      <button class="btn-close" onclick="closeSettings()">Schließen</button>
+      <button class="btn-cls"  onclick="closeSettings()">Schließen</button>
     </div>
   </div>
 </div>
 
-<!-- MAIN APP -->
+<!-- APP -->
 <div id="app">
 
-  <!-- LEFT: KAMERA -->
+  <!-- KAMERA (links) -->
   <div id="cam-panel">
-    <video id="videoEl" autoplay muted playsinline></video>
-    <div class="scan-box">
-      <div class="scan-frame">
-        <div class="scan-line"></div>
-      </div>
+    <video id="videoEl" autoplay muted playsinline webkit-playsinline></video>
+    <canvas id="scanCanvas"></canvas>
+    <div class="scan-overlay">
+      <div class="scan-frame"><div class="scan-line"></div></div>
+      <div class="cam-hint">BARCODE HIER HALTEN</div>
     </div>
-    <div class="cam-label">BARCODE SCANNER</div>
+    <div class="cam-status" id="camStatus">Kamera startet...</div>
   </div>
 
-  <!-- RIGHT: STATUS -->
+  <!-- STATUS (rechts) -->
   <div id="status-panel">
-
     <button id="settings-btn" onclick="openSettings()">⚙</button>
 
     <!-- IDLE -->
     <div class="screen active" id="screen-idle">
       <div class="idle-icon">🛡️</div>
       <div class="idle-title">Bitte ESD Test<br>durchführen</div>
-      <div class="idle-sub">Armband anlegen und testen</div>
-      <div class="mic-indicator">
+      <div class="idle-sub">Armband anlegen &amp; Gerät testen</div>
+      <div class="mic-row">
         <div class="mic-dot"></div>
         <span>Mikrofon aktiv</span>
-        <div class="audio-bar" id="audioBar">
-          <span id="b1" style="height:4px"></span>
-          <span id="b2" style="height:4px"></span>
-          <span id="b3" style="height:4px"></span>
-          <span id="b4" style="height:4px"></span>
-          <span id="b5" style="height:4px"></span>
+        <div class="audio-bars">
+          <span id="b1"></span><span id="b2"></span><span id="b3"></span>
+          <span id="b4"></span><span id="b5"></span>
         </div>
       </div>
+      <div class="beep-status" id="beepStatus">Warte auf Piepton...</div>
     </div>
 
     <!-- SUCCESS -->
     <div class="screen" id="screen-success">
-      <div class="ok-badge">✓ ESD OK</div>
-      <div class="ok-title">Test bestanden!</div>
+      <div class="ok-badge">✓ ESD BESTANDEN</div>
+      <div class="ok-title">Test OK!</div>
       <div class="timer-wrap">
-        <svg viewBox="0 0 56 56">
-          <circle class="timer-track" cx="28" cy="28" r="24"/>
-          <circle class="timer-ring" cx="28" cy="28" r="24" id="timerRing"/>
+        <svg viewBox="0 0 58 58">
+          <circle class="t-track" cx="29" cy="29" r="22"/>
+          <circle class="t-ring"  cx="29" cy="29" r="22" id="timerRing"/>
         </svg>
         <div class="timer-num" id="timerNum">30</div>
       </div>
       <div style="width:100%">
-        <div class="field-label">Barcode (automatisch oder manuell)</div>
-        <input type="text" id="barcodeInput" placeholder="Barcode wird erkannt..." autocomplete="off">
+        <div class="field-lbl">Barcode (Kamera scannt automatisch)</div>
+        <input type="text" id="barcodeInput" placeholder="Barcode wird erkannt..." autocomplete="off" autocorrect="off">
       </div>
       <div style="width:100%">
-        <div class="field-label">Personalnummer</div>
+        <div class="field-lbl">Personalnummer (manuell)</div>
         <input type="text" id="personalInput" placeholder="Eingeben..." inputmode="numeric" autocomplete="off">
       </div>
-      <button class="btn btn-send" id="sendBtn" onclick="submitData()">💾 Senden</button>
+      <button class="btn-send" id="sendBtn" onclick="submitData()">💾 Senden</button>
     </div>
 
     <!-- FAIL -->
     <div class="screen" id="screen-fail">
       <div class="fail-icon">⚠️</div>
       <div class="fail-title">Test fehlgeschlagen</div>
-      <div class="fail-sub">Armband prüfen und<br>erneut testen</div>
+      <div class="fail-sub">Armband prüfen und<br>erneut testen!</div>
       <div class="fail-back" id="failBack">Zurück in 5 Sek...</div>
     </div>
 
   </div>
 </div>
-
 <div id="toast"></div>
 
 <script>
 // ── KONFIGURATION ──────────────────────────────────────────────────────────
-
 const CFG = {
-  get webhookUrl()  { return localStorage.getItem('webhookUrl')  || '' },
-  get freqGood()    { return parseFloat(localStorage.getItem('freqGood'))    || 0 },
-  get freqBad()     { return parseFloat(localStorage.getItem('freqBad'))     || 0 },
-  get tolerance()   { return parseFloat(localStorage.getItem('tolerance'))   || 150 },
-  get minDuration() { return parseFloat(localStorage.getItem('minDuration')) || 300 },
+  get webhookUrl() { return localStorage.getItem('webhookUrl') || '' },
+  get freq()       { return parseFloat(localStorage.getItem('freq'))   || 2100 },
+  get tolerance()  { return parseFloat(localStorage.getItem('tol'))    || 150  },
+  get window()     { return parseFloat(localStorage.getItem('window')) || 2.5  },
 };
-
-const SESSION_SEC   = 30;
-const AMP_THRESHOLD = 30;   // 0-255, Mindestlautstärke um Hintergrundgeräusche zu ignorieren
-const COOLDOWN_MS   = 4000; // ms nach Auslösung, bevor nächster Ton erkannt wird
+const SESSION_SEC    = 30;
+const BEEP_AMP_MIN   = 28;   // 0-255 – Mindestlautstärke
+const BEEP_MIN_MS    = 120;  // Mindestdauer eines Pieptons
+const BEEP_GAP_MIN   = 200;  // Mindest-Pause zwischen zwei Pieptönen
+const COOLDOWN_MS    = 5000; // Nach Auslösung: keine neue Erkennung
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-
-let state = 'idle'; // 'idle' | 'success' | 'fail'
+let appState      = 'idle';
 let sessionTimer  = null;
 let countdown     = SESSION_SEC;
-let lastTriggerMs = 0;
 
 // ── AUDIO ──────────────────────────────────────────────────────────────────
+let audioCtx, analyser;
 
-let audioCtx, analyser, audioStream;
-let detectStart = null;
-let detectType  = null; // 'good' | 'bad'
-let isCalibrating = false, calType = null, calFreqs = [];
-let calTimer = null;
+/*
+  Beep-Zustandsmaschine:
+  idle → in_beep_1 → between → in_beep_2 → trigger(good)
+                             → timeout    → trigger(bad)
+*/
+let beepPhase     = 'idle';
+let phaseStart    = 0;
+let beep1End      = 0;
+let cooldownStart = 0;
 
 async function initAudio() {
-  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
-  analyser  = audioCtx.createAnalyser();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
   analyser.fftSize = 4096;
-  audioCtx.createMediaStreamSource(audioStream).connect(analyser);
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
   audioLoop();
 }
 
-function getPeakFreq() {
+function getPeak() {
   const buf = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteFrequencyData(buf);
   let maxAmp = 0, maxBin = 0;
   for (let i = 1; i < buf.length; i++) {
     if (buf[i] > maxAmp) { maxAmp = buf[i]; maxBin = i; }
   }
-  const freq = maxBin * audioCtx.sampleRate / analyser.fftSize;
-  return { freq, amp: maxAmp };
+  return {
+    freq: maxBin * audioCtx.sampleRate / analyser.fftSize,
+    amp:  maxAmp
+  };
 }
 
 function audioLoop() {
-  const { freq, amp } = getPeakFreq();
-  const now = Date.now();
+  const { freq, amp } = getPeak();
+  const now  = Date.now();
+  const isBeep = amp >= BEEP_AMP_MIN &&
+                 Math.abs(freq - CFG.freq) <= CFG.tolerance;
 
-  // Audio-Pegelanzeige im Idle-Screen
-  updateAudioBar(amp);
+  // Pegelanzeige
+  const bars = ['b1','b2','b3','b4','b5'];
+  const scale = [.10,.16,.22,.13,.08];
+  bars.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) el.style.height = Math.min(18, amp * scale[i]) + 'px';
+  });
 
-  // Kalibrierung
-  if (isCalibrating) {
-    if (amp > AMP_THRESHOLD) calFreqs.push(freq);
-    setTimeout(audioLoop, 50);
-    return;
+  switch (beepPhase) {
+
+    case 'idle':
+      if (isBeep) { beepPhase = 'in_beep_1'; phaseStart = now; }
+      break;
+
+    case 'in_beep_1':
+      if (!isBeep) {
+        const dur = now - phaseStart;
+        if (dur >= BEEP_MIN_MS) {
+          beep1End  = now;
+          beepPhase = 'between';
+          updateBeepStatus('1 Piepton – warte auf 2. Piepton...');
+        } else {
+          beepPhase = 'idle';
+        }
+      }
+      break;
+
+    case 'between':
+      if (now - beep1End > CFG.window * 1000) {
+        // Timeout → NUR ein Piepton → SCHLECHT
+        beepPhase     = 'cooldown';
+        cooldownStart = now;
+        triggerResult('bad');
+      } else if (isBeep && now - beep1End >= BEEP_GAP_MIN) {
+        beepPhase  = 'in_beep_2';
+        phaseStart = now;
+      }
+      break;
+
+    case 'in_beep_2':
+      if (!isBeep) {
+        const dur = now - phaseStart;
+        if (dur >= BEEP_MIN_MS) {
+          // Zweiter gültiger Piepton → GUT
+          beepPhase     = 'cooldown';
+          cooldownStart = now;
+          triggerResult('good');
+        } else {
+          beepPhase = 'between'; // zu kurz, weiter warten
+        }
+      }
+      break;
+
+    case 'cooldown':
+      if (now - cooldownStart >= COOLDOWN_MS) {
+        beepPhase = 'idle';
+        updateBeepStatus('Warte auf Piepton...');
+      }
+      break;
   }
 
-  // Cooldown
-  if (now - lastTriggerMs < COOLDOWN_MS) {
-    detectStart = null;
-    setTimeout(audioLoop, 50);
-    return;
-  }
-
-  // Frequenz-Match
-  const matchGood = CFG.freqGood > 0 && Math.abs(freq - CFG.freqGood) < CFG.tolerance && amp > AMP_THRESHOLD;
-  const matchBad  = CFG.freqBad  > 0 && Math.abs(freq - CFG.freqBad)  < CFG.tolerance && amp > AMP_THRESHOLD;
-
-  if (matchGood || matchBad) {
-    const type = matchGood ? 'good' : 'bad';
-    if (!detectStart || detectType !== type) { detectStart = now; detectType = type; }
-    if (now - detectStart >= CFG.minDuration) {
-      detectStart = null;
-      lastTriggerMs = now;
-      trigger(type);
-    }
-  } else {
-    detectStart = null;
-    detectType  = null;
-  }
-
-  setTimeout(audioLoop, 50);
+  setTimeout(audioLoop, 40);
 }
 
-function updateAudioBar(amp) {
-  const ids = ['b1','b2','b3','b4','b5'];
-  const heights = [
-    Math.min(20, amp * .1),
-    Math.min(20, amp * .15),
-    Math.min(20, amp * .2),
-    Math.min(20, amp * .12),
-    Math.min(20, amp * .08),
-  ];
-  ids.forEach((id, i) => {
-    const el = document.getElementById(id);
-    if (el) el.style.height = heights[i] + 'px';
-  });
+function updateBeepStatus(msg) {
+  const el = document.getElementById('beepStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('waiting', msg.includes('warte'));
 }
 
 // ── TRIGGER ────────────────────────────────────────────────────────────────
-
-function trigger(type) {
-  if (type === 'good') {
-    setState('success');
-  } else {
-    setState('fail');
-  }
+function triggerResult(type) {
+  setAppState(type === 'good' ? 'success' : 'fail');
 }
 
-// ── STATE MACHINE ──────────────────────────────────────────────────────────
-
-function setState(newState) {
-  state = newState;
+// ── APP STATE ──────────────────────────────────────────────────────────────
+function setAppState(newState) {
+  appState = newState;
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + newState).classList.add('active');
   clearInterval(sessionTimer);
@@ -428,105 +436,150 @@ function setState(newState) {
   if (newState === 'success') {
     document.getElementById('barcodeInput').value  = '';
     document.getElementById('personalInput').value = '';
-    startCamera();
+    document.getElementById('sendBtn').disabled    = false;
+    document.getElementById('sendBtn').textContent = '💾 Senden';
+    isScanningActive = true;
     startCountdown();
-  }
-
-  if (newState !== 'success') {
-    stopCamera();
+  } else {
+    isScanningActive = false;
   }
 
   if (newState === 'fail') {
-    let fb = 5;
-    document.getElementById('failBack').textContent = 'Zurück in ' + fb + ' Sek...';
+    let n = 5;
+    const el = document.getElementById('failBack');
+    el.textContent = 'Zurück in ' + n + ' Sek...';
     const t = setInterval(() => {
-      fb--;
-      const el = document.getElementById('failBack');
-      if (el) el.textContent = 'Zurück in ' + fb + ' Sek...';
-      if (fb <= 0) { clearInterval(t); setState('idle'); }
+      n--;
+      if (el) el.textContent = 'Zurück in ' + n + ' Sek...';
+      if (n <= 0) { clearInterval(t); setAppState('idle'); }
     }, 1000);
   }
 }
 
 // ── COUNTDOWN ──────────────────────────────────────────────────────────────
-
-const CIRCUMFERENCE = 2 * Math.PI * 24; // r=24
+const CIRC = 2 * Math.PI * 22; // r=22
 
 function startCountdown() {
   countdown = SESSION_SEC;
-  updateCountdownUI();
+  renderTimer();
   sessionTimer = setInterval(() => {
     countdown--;
-    updateCountdownUI();
-    if (countdown <= 0) {
-      clearInterval(sessionTimer);
-      setState('idle');
-    }
+    renderTimer();
+    if (countdown <= 0) { clearInterval(sessionTimer); setAppState('idle'); }
   }, 1000);
 }
 
-function updateCountdownUI() {
-  document.getElementById('timerNum').textContent = countdown;
-  const progress = countdown / SESSION_SEC;
-  const offset   = CIRCUMFERENCE * (1 - progress);
-  const ring = document.getElementById('timerRing');
-  if (ring) ring.style.strokeDashoffset = offset;
+function renderTimer() {
+  const el = document.getElementById('timerNum');
+  const rg = document.getElementById('timerRing');
+  if (el) el.textContent = countdown;
+  if (rg) rg.style.strokeDashoffset = CIRC * (1 - countdown / SESSION_SEC);
 }
 
-// ── KAMERA / BARCODE ───────────────────────────────────────────────────────
+// ── KAMERA + BARCODE ────────────────────────────────────────────────────────
+let isScanningActive = false;
+let scanLoopRunning  = false;
+let codeReader       = null;
+let videoStream      = null;
 
-let codeReader = null;
-
-async function startCamera() {
+async function initCamera() {
   const video = document.getElementById('videoEl');
+  const status = document.getElementById('camStatus');
+
   try {
-    if (typeof ZXing === 'undefined') { showToast('ZXing nicht geladen – Barcode-Scan nicht verfügbar'); return; }
-    codeReader = new ZXing.BrowserMultiFormatReader();
-    await codeReader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } } },
-      video,
-      (result, err) => {
-        if (result) handleBarcode(result.getText());
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
       }
-    );
-  } catch(e) {
-    showToast('Kamera: ' + e.message);
+    });
+
+    video.srcObject = videoStream;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = () => {
+        video.play().then(resolve).catch(reject);
+      };
+      setTimeout(reject, 5000); // timeout
+    });
+
+    if (status) status.textContent = '📷 Kamera aktiv';
+
+    // ZXing initialisieren
+    if (typeof ZXing !== 'undefined') {
+      codeReader = new ZXing.BrowserMultiFormatReader();
+    }
+
+    if (!scanLoopRunning) {
+      scanLoopRunning = true;
+      scanLoop();
+    }
+
+  } catch (e) {
+    if (status) status.textContent = '⚠ Kamera: ' + e.message;
+    showToast('Kamera-Fehler: ' + e.message);
   }
 }
 
-function stopCamera() {
-  if (codeReader) { codeReader.reset(); codeReader = null; }
-  const v = document.getElementById('videoEl');
-  if (v && v.srcObject) { v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null; }
+let lastCode = '', lastCodeTime = 0;
+
+function scanLoop() {
+  const video  = document.getElementById('videoEl');
+  const canvas = document.getElementById('scanCanvas');
+
+  if (!isScanningActive || !codeReader || !video.videoWidth) {
+    setTimeout(scanLoop, 300);
+    return;
+  }
+
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  try {
+    const result = codeReader.decodeFromCanvas(canvas);
+    if (result) {
+      const code = result.getText();
+      const now  = Date.now();
+      if (code !== lastCode || now - lastCodeTime > 3000) {
+        lastCode = code; lastCodeTime = now;
+        handleBarcode(code);
+      }
+    }
+  } catch (_) {
+    // NotFoundException ist normal (kein Barcode im Bild)
+  }
+
+  setTimeout(scanLoop, 250);
 }
 
-let lastBarcode = '';
-let lastBarcodeTime = 0;
-
 function handleBarcode(code) {
-  const now = Date.now();
-  if (code === lastBarcode && now - lastBarcodeTime < 2000) return; // Duplikat-Schutz
-  lastBarcode = code; lastBarcodeTime = now;
-
+  if (appState !== 'success') return;
   const input = document.getElementById('barcodeInput');
   if (!input) return;
   input.value = code;
   input.classList.add('flash');
-  setTimeout(() => input.classList.remove('flash'), 600);
+  setTimeout(() => input.classList.remove('flash'), 700);
   showToast('Barcode: ' + code);
 }
 
 // ── SENDEN ─────────────────────────────────────────────────────────────────
-
 async function submitData() {
-  const barcode  = document.getElementById('barcodeInput').value.trim();
-  const personal = document.getElementById('personalInput').value.trim();
+  const barcode  = (document.getElementById('barcodeInput').value  || '').trim();
+  const personal = (document.getElementById('personalInput').value || '').trim();
 
   if (!barcode && !personal) {
-    showToast('Bitte Barcode scannen oder Personalnummer eingeben'); return;
+    showToast('Bitte Barcode scannen oder Personalnummer eingeben');
+    return;
   }
   if (!CFG.webhookUrl) {
-    showToast('Kein Webhook – Einstellungen öffnen'); return;
+    showToast('Kein Webhook konfiguriert – Einstellungen öffnen ⚙');
+    return;
   }
 
   const btn = document.getElementById('sendBtn');
@@ -534,22 +587,23 @@ async function submitData() {
   btn.textContent = '⏳ Wird gesendet...';
 
   try {
-    const resp = await fetch(CFG.webhookUrl, {
-      method: 'POST',
+    const r = await fetch(CFG.webhookUrl, {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        Barcode:         barcode  || null,
-        Personalnummer:  personal || null,
-        Zeitstempel:     new Date().toISOString()
+      body:    JSON.stringify({
+        Barcode:        barcode  || null,
+        Personalnummer: personal || null,
+        Zeitstempel:    new Date().toISOString()
       })
     });
 
-    if (resp.ok || resp.status === 202) {
-      showToast('✓ Gespeichert!');
+    if (r.ok || r.status === 202) {
+      showToast('✓ Erfolgreich gespeichert!');
       clearInterval(sessionTimer);
-      setTimeout(() => setState('idle'), 1500);
+      isScanningActive = false;
+      setTimeout(() => setAppState('idle'), 1800);
     } else {
-      showToast('Fehler ' + resp.status + ' beim Senden');
+      showToast('Fehler ' + r.status + ' – erneut versuchen');
       btn.disabled = false;
       btn.textContent = '💾 Senden';
     }
@@ -560,111 +614,72 @@ async function submitData() {
   }
 }
 
-// ── KALIBRIERUNG ────────────────────────────────────────────────────────────
-
-async function calibrate(type) {
-  if (isCalibrating) return;
-  const btnId  = type === 'good' ? 'cal-good-btn' : 'cal-bad-btn';
-  const btn    = document.getElementById(btnId);
-  const CAL_MS = 3000;
-
-  calFreqs      = [];
-  isCalibrating = true;
-  calType       = type;
-  btn.classList.add('recording');
-  btn.textContent = '⏺ Aufnahme...';
-
-  await new Promise(r => setTimeout(r, CAL_MS));
-
-  isCalibrating = false;
-  btn.classList.remove('recording');
-  btn.textContent = type === 'good' ? '🟢 GUT kalibrieren' : '🔴 SCHLECHT kalibrieren';
-
-  if (calFreqs.length === 0) {
-    showToast('Kein Ton erkannt – erneut versuchen'); return;
-  }
-
-  const avg = Math.round(calFreqs.reduce((a, b) => a + b, 0) / calFreqs.length);
-  localStorage.setItem(type === 'good' ? 'freqGood' : 'freqBad', avg);
-  updateFreqDisplay();
-  showToast((type === 'good' ? 'GUT' : 'SCHLECHT') + ' kalibriert: ' + avg + ' Hz');
-}
-
-function updateFreqDisplay() {
-  const g = localStorage.getItem('freqGood');
-  const b = localStorage.getItem('freqBad');
-  const gEl = document.getElementById('freq-good-val');
-  const bEl = document.getElementById('freq-bad-val');
-  if (gEl) gEl.textContent = g ? Math.round(g) : '–';
-  if (bEl) bEl.textContent = b ? Math.round(b) : '–';
-}
-
 // ── EINSTELLUNGEN ───────────────────────────────────────────────────────────
-
 function openSettings() {
-  document.getElementById('set-webhook').value    = CFG.webhookUrl;
-  document.getElementById('set-tolerance').value  = CFG.tolerance;
-  document.getElementById('set-duration').value   = CFG.minDuration;
-  updateFreqDisplay();
+  document.getElementById('set-webhook').value = CFG.webhookUrl;
+  document.getElementById('set-freq').value    = CFG.freq;
+  document.getElementById('set-tol').value     = CFG.tolerance;
+  document.getElementById('set-window').value  = CFG.window;
   document.getElementById('settings-modal').classList.add('open');
 }
-
 function closeSettings() {
   document.getElementById('settings-modal').classList.remove('open');
 }
-
 function saveSettings() {
-  localStorage.setItem('webhookUrl',   document.getElementById('set-webhook').value.trim());
-  localStorage.setItem('tolerance',    document.getElementById('set-tolerance').value.trim());
-  localStorage.setItem('minDuration',  document.getElementById('set-duration').value.trim());
+  localStorage.setItem('webhookUrl', document.getElementById('set-webhook').value.trim());
+  localStorage.setItem('freq',       document.getElementById('set-freq').value);
+  localStorage.setItem('tol',        document.getElementById('set-tol').value);
+  localStorage.setItem('window',     document.getElementById('set-window').value);
   closeSettings();
   showToast('Einstellungen gespeichert');
 }
 
 // ── TOAST ───────────────────────────────────────────────────────────────────
-
-let toastTimer = null;
+let toastT = null;
 function showToast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
-// ── INIT ────────────────────────────────────────────────────────────────────
-
+// ── START ────────────────────────────────────────────────────────────────────
 async function startApp() {
-  const overlay = document.getElementById('start-overlay');
-  const startBtn = overlay.querySelector('.btn-start');
-  startBtn.textContent = 'Starte...';
-  startBtn.disabled = true;
+  const btn = document.getElementById('startBtn');
+  const err = document.getElementById('start-err');
+  btn.disabled = true;
+  btn.textContent = 'Starte...';
+  err.textContent = '';
 
   try {
     await initAudio();
-    overlay.style.display = 'none';
-    setState('idle');
-
-    if (!CFG.webhookUrl) showToast('Einstellungen öffnen und Webhook eintragen ⚙');
-    if (!CFG.freqGood && !CFG.freqBad) showToast('Pieptöne noch nicht kalibriert ⚙');
   } catch(e) {
-    startBtn.textContent = 'Mikrofon verweigert – Erneut versuchen';
-    startBtn.disabled = false;
-    showToast('Fehler: ' + e.message);
+    err.textContent = 'Mikrofon verweigert: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Erneut versuchen';
+    return;
   }
+
+  try {
+    await initCamera();
+  } catch(e) {
+    // Kamera-Fehler wird in initCamera angezeigt – trotzdem weiter
+  }
+
+  document.getElementById('start-overlay').style.display = 'none';
+  setAppState('idle');
+
+  if (!CFG.webhookUrl) showToast('Webhook noch nicht eingestellt ⚙');
 }
 
-// Wakelock – verhindert Bildschirmsperre
-async function requestWakeLock() {
+// Screen-Sperre verhindern
+async function keepAwake() {
   if ('wakeLock' in navigator) {
-    try {
-      await navigator.wakeLock.request('screen');
-    } catch(e) {}
+    try { await navigator.wakeLock.request('screen'); } catch(_) {}
   }
 }
-requestWakeLock();
+keepAwake();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') requestWakeLock();
+  if (document.visibilityState === 'visible') keepAwake();
 });
 </script>
 </body>
