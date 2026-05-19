@@ -1,3 +1,1 @@
-which chromium
-which chromium-browser
-ls /usr/bin/chrom*
+sleep 10 && rm -f "/home/esd-kiosk1/.config/chromium/Default/Last Session" "/home/esd-kiosk1/.config/chromium/Default/Last Tabs" 2>/dev/null && chromium --start-fullscreen --noerrdialogs --disable-infobars --ozone-platform=wayland --password-store=basic http://localhost:8080 &
