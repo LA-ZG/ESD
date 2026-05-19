@@ -245,11 +245,6 @@ input:focus{border-color:var(--blue)}
   <div class="set-box">
     <div class="set-title">⚙️ Einstellungen</div>
     <div>
-      <div class="set-lbl">Power Automate Webhook URL</div>
-      <input type="text" id="set-webhook" placeholder="https://prod-xx.westeurope.logic.azure.com/...">
-    </div>
-    <div class="sep"></div>
-    <div>
       <div class="set-lbl">Piepton-Erkennung</div>
       <div class="set-row">
         <span style="font-size:11px;color:var(--muted);white-space:nowrap">Frequenz Hz:</span>
@@ -382,11 +377,14 @@ input:focus{border-color:var(--blue)}
 
 <script>
 // ── KONFIGURATION ─────────────────────────────────────────────────────────
+const FORMS_URL = "https://forms.office.com/formapi/api/8b206608-a593-4ace-a4b6-ef1fc83c9169/users/e568d74b-d6f0-4c39-a968-ea70cd733a9e/forms('CGYgi5Olzkqktu8fyDyRaUvXaOXw1jlMqWjqcM1zOp5UMERSSFpXTlUxMThISkVISVdBRU05R1RHVy4u')/responses";
+const Q_BARCODE = "r3ea481149afd4e01bab5d0bcaa487074";
+const Q_PERSON  = "r4c04e7585ba145418732a7dc2367f666";
+
 const CFG = {
-  get webhookUrl() { return localStorage.getItem('webhookUrl') || '' },
-  get freq()       { return parseFloat(localStorage.getItem('freq'))  || 2100 },
-  get tolerance()  { return parseFloat(localStorage.getItem('tol'))   || 150  },
-  get winSec()     { return parseFloat(localStorage.getItem('win'))   || 2.5  },
+  get freq()      { return parseFloat(localStorage.getItem('freq'))  || 2100 },
+  get tolerance() { return parseFloat(localStorage.getItem('tol'))   || 150  },
+  get winSec()    { return parseFloat(localStorage.getItem('win'))   || 2.5  },
 };
 const SESSION_SEC  = 30;
 const BEEP_AMP_MIN = 28;
@@ -505,7 +503,7 @@ document.addEventListener('keydown', (e) => {
     const code = scanBuf.trim();
     scanBuf = '';
     clearTimeout(scanTimer);
-    if (code.length >= 3) handleBarcode(code);
+    if (code.length >= 3) handleBarcode(code.trim());
     return;
   }
 
@@ -519,7 +517,7 @@ document.addEventListener('keydown', (e) => {
 async function handleBarcode(code) {
   if (appState !== 'success') return;
   clearInterval(sesTimer);
-  await sendToSharePoint({ Barcode: code, Personalnummer: null });
+  await sendToForms(code, null);
 }
 
 // ── NUMPAD ────────────────────────────────────────────────────────────────
@@ -543,7 +541,7 @@ function npConfirm() {
   const val = npValue;
   npValue = '';
   renderNp();
-  sendToSharePoint({ Barcode: null, Personalnummer: val });
+  sendToForms(null, val);
 }
 
 function renderNp() {
@@ -558,32 +556,30 @@ function renderNp() {
   if (ok) ok.disabled = npValue.length !== 6;
 }
 
-// ── SENDEN ────────────────────────────────────────────────────────────────
-async function sendToSharePoint(payload) {
-  payload.Zeitstempel = new Date().toISOString();
-
-  if (!CFG.webhookUrl) {
-    showToast('Kein Webhook konfiguriert – Einstellungen öffnen ⚙');
-    return;
-  }
+// ── SENDEN → Microsoft Forms (Hintergrund) ────────────────────────────────
+async function sendToForms(barcode, personalnummer) {
+  const now = new Date().toISOString();
+  const answers = JSON.stringify([
+    { questionId: Q_BARCODE, answer1: barcode      || '', answer2:null,answer3:null,answer4:null,answer5:null,answer6:null,answer7:null,answer8:null,answer9:null,answer10:null },
+    { questionId: Q_PERSON,  answer1: personalnummer|| '', answer2:null,answer3:null,answer4:null,answer5:null,answer6:null,answer7:null,answer8:null,answer9:null,answer10:null }
+  ]);
 
   try {
-    const r = await fetch(CFG.webhookUrl, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload)
+    const r = await fetch(FORMS_URL, {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:        JSON.stringify({ startDate: now, submitDate: now, answers })
     });
 
-    if (r.ok || r.status === 202) {
-      const sub = payload.Barcode
-        ? 'Barcode: ' + payload.Barcode
-        : 'Personalnummer: ' + payload.Personalnummer;
-      const el = document.getElementById('savedSub');
+    if (r.ok || r.status === 201 || r.status === 202) {
+      const sub = barcode ? 'Barcode: ' + barcode : 'Personalnummer: ' + personalnummer;
+      const el  = document.getElementById('savedSub');
       if (el) el.textContent = sub;
       setAppState('saved');
       setTimeout(() => setAppState('idle'), 2000);
     } else {
-      showToast('Fehler ' + r.status + ' – bitte erneut versuchen');
+      showToast('Forms-Fehler ' + r.status + ' – bitte erneut versuchen');
     }
   } catch (e) {
     showToast('Netzwerkfehler: ' + e.message);
@@ -660,18 +656,16 @@ function flashWarn() {
 
 // ── EINSTELLUNGEN ─────────────────────────────────────────────────────────
 function openSettings() {
-  document.getElementById('set-webhook').value = CFG.webhookUrl;
-  document.getElementById('set-freq').value    = CFG.freq;
-  document.getElementById('set-tol').value     = CFG.tolerance;
-  document.getElementById('set-win').value     = CFG.winSec;
+  document.getElementById('set-freq').value = CFG.freq;
+  document.getElementById('set-tol').value  = CFG.tolerance;
+  document.getElementById('set-win').value  = CFG.winSec;
   document.getElementById('settings-modal').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
 function saveSettings() {
-  localStorage.setItem('webhookUrl', document.getElementById('set-webhook').value.trim());
-  localStorage.setItem('freq',       document.getElementById('set-freq').value);
-  localStorage.setItem('tol',        document.getElementById('set-tol').value);
-  localStorage.setItem('win',        document.getElementById('set-win').value);
+  localStorage.setItem('freq', document.getElementById('set-freq').value);
+  localStorage.setItem('tol',  document.getElementById('set-tol').value);
+  localStorage.setItem('win',  document.getElementById('set-win').value);
   closeSettings();
   showToast('Einstellungen gespeichert');
 }
@@ -698,7 +692,6 @@ async function startApp() {
   }
   document.getElementById('start-overlay').style.display = 'none';
   setAppState('idle');
-  if (!CFG.webhookUrl) showToast('Webhook noch nicht eingestellt ⚙');
 }
 
 // Bildschirm-Sperre verhindern
