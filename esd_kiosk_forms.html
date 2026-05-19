@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>ESD Kiosk</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+:root{
+  --green:#16a34a;--green-bg:#052e16;--green-light:#22c55e;
+  --red:#dc2626;--red-bg:#450a0a;--red-light:#f87171;
+  --amber:#d97706;--amber-light:#fbbf24;
+  --blue:#2563eb;--dark:#0f172a;--slate:#1e293b;
+  --text:#f1f5f9;--muted:#64748b;--dim:#334155;
+}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:var(--dark);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+}
+
+/* ── SCREENS ─────────────────────────────────────────────────── */
+#app{width:100%;height:100%;position:relative}
+.screen{
+  display:none;position:absolute;inset:0;
+  flex-direction:column;align-items:center;justify-content:center;
+  padding:28px 24px;gap:0;text-align:center;
+}
+.screen.active{display:flex}
+
+/* ── IDLE ────────────────────────────────────────────────────── */
+#screen-idle{background:var(--dark)}
+.idle-title{
+  font-size:36px;font-weight:800;line-height:1.2;color:var(--text);
+  max-width:500px;
+}
+
+/* hidden mic (runs in background, not shown) */
+#micStatus{display:none}
+
+/* ── BEEP1 (ESD Test gestartet) ──────────────────────────────── */
+#screen-beep1{background:var(--dark)}
+.b1-title{font-size:30px;font-weight:800;color:var(--amber-light)}
+.b1-sub{font-size:15px;color:var(--muted);margin-top:10px}
+.spinner{
+  width:48px;height:48px;border:4px solid rgba(255,255,255,.1);
+  border-top-color:var(--amber-light);border-radius:50%;
+  animation:spin .9s linear infinite;margin-top:18px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── SUCCESS (Barcode scannen) ───────────────────────────────── */
+#screen-success{background:var(--dark);gap:20px}
+.bc-scan-icon{
+  display:flex;flex-direction:column;align-items:center;gap:0;
+  opacity:.85
+}
+.bc-bars{display:flex;gap:3px;align-items:flex-end;height:64px;margin-bottom:4px}
+.bc-bars span{background:var(--text);border-radius:1px}
+.bc-scan-title{
+  font-size:34px;font-weight:800;color:var(--text);margin-top:4px
+}
+.bc-scan-sub{font-size:14px;color:var(--muted);margin-top:2px}
+.btn-manual{
+  margin-top:8px;padding:14px 30px;background:rgba(255,255,255,.09);
+  border:1.5px solid rgba(255,255,255,.2);border-radius:12px;
+  color:var(--text);font-size:16px;font-weight:600;cursor:pointer;
+  transition:background .15s;
+}
+.btn-manual:active{background:rgba(255,255,255,.18)}
+
+/* Timer ring (small, bottom right) */
+.timer-corner{
+  position:absolute;bottom:12px;right:14px;
+  display:flex;align-items:center;gap:6px
+}
+.timer-corner svg{width:36px;height:36px;transform:rotate(-90deg)}
+.tc-track{fill:none;stroke:rgba(255,255,255,.1);stroke-width:4}
+.tc-ring{fill:none;stroke:var(--green-light);stroke-width:4;stroke-linecap:round;
+  stroke-dasharray:88;stroke-dashoffset:0;transition:stroke-dashoffset 1s linear}
+.tc-num{
+  position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;color:var(--muted)
+}
+
+/* ── NUMPAD ──────────────────────────────────────────────────── */
+#screen-numpad{background:var(--dark);justify-content:center}
+/* landscape: two-column layout */
+.np-wrap{
+  display:flex;gap:20px;align-items:center;
+  width:100%;max-width:580px
+}
+.np-left{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;gap:12px
+}
+.np-heading{font-size:18px;font-weight:700;color:var(--text);text-align:center;line-height:1.3}
+.np-display{
+  display:flex;gap:6px;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.35);border-radius:10px;
+  padding:10px 14px;width:100%;min-height:52px
+}
+.np-display span{
+  font-size:26px;font-weight:800;font-family:monospace;
+  min-width:18px;text-align:center;color:var(--text)
+}
+.np-display span.filled{color:var(--green-light)}
+.np-display span.cursor{color:var(--amber-light);animation:blink .8s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.np-range{font-size:11px;color:var(--muted)}
+.np-error{font-size:12px;color:var(--red-light);min-height:16px;text-align:center}
+.np-actions{display:flex;gap:8px;width:100%;margin-top:4px}
+.btn-back{
+  flex:1;padding:11px 8px;border:1.5px solid rgba(255,255,255,.15);
+  border-radius:9px;background:transparent;color:var(--muted);
+  font-size:14px;font-weight:600;cursor:pointer
+}
+.btn-abort{
+  flex:1;padding:11px 8px;border:1.5px solid var(--red);
+  border-radius:9px;background:transparent;color:var(--red-light);
+  font-size:14px;font-weight:600;cursor:pointer
+}
+.btn-back:active{background:rgba(255,255,255,.08)}
+.btn-abort:active{background:rgba(220,38,38,.12)}
+
+.np-right{flex:0 0 auto}
+.np-grid{
+  display:grid;grid-template-columns:repeat(3,68px);
+  grid-template-rows:repeat(4,52px);gap:6px
+}
+.np-grid button{
+  border:1.5px solid rgba(255,255,255,.12);border-radius:9px;
+  background:rgba(255,255,255,.07);color:var(--text);
+  font-size:22px;font-weight:600;cursor:pointer;
+  transition:background .1s,transform .08s;
+  display:flex;align-items:center;justify-content:center
+}
+.np-grid button:active{background:rgba(255,255,255,.22);transform:scale(.91)}
+.np-del{color:var(--red-light)!important;font-size:19px!important}
+.np-ok{background:var(--green)!important;border-color:var(--green)!important;font-size:19px!important}
+.np-ok:disabled{background:var(--dim)!important;border-color:var(--dim)!important;cursor:default!important;transform:none!important}
+
+/* ── SAVED ───────────────────────────────────────────────────── */
+#screen-saved{background:var(--green-bg);gap:14px}
+.saved-check{font-size:62px;line-height:1}
+.saved-title{font-size:28px;font-weight:800;color:var(--green-light);line-height:1.2}
+.saved-sub{font-size:15px;color:rgba(255,255,255,.6)}
+
+/* ── FAIL ────────────────────────────────────────────────────── */
+#screen-fail{background:var(--red-bg);gap:12px}
+.fail-icon{font-size:52px;line-height:1}
+.fail-title{font-size:24px;font-weight:800;color:var(--red-light)}
+.fail-sub{font-size:14px;color:rgba(255,255,255,.55);line-height:1.5}
+.fail-back{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* ── WARN FLASH ──────────────────────────────────────────────── */
+#warn-flash{
+  position:fixed;inset:0;z-index:500;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:10px;
+  background:rgba(185,28,28,.93);
+  opacity:0;pointer-events:none;transition:opacity .15s
+}
+#warn-flash.show{opacity:1;pointer-events:all}
+.wf-icon{font-size:50px}
+.wf-text{font-size:22px;font-weight:800;color:#fff;text-align:center;padding:0 20px}
+.wf-sub{font-size:14px;color:rgba(255,255,255,.65)}
+
+/* ── START OVERLAY ───────────────────────────────────────────── */
+#start-overlay{
+  position:fixed;inset:0;background:var(--dark);z-index:400;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;text-align:center;padding:24px
+}
+.st-title{font-size:22px;font-weight:800}
+.st-sub{font-size:13px;color:var(--muted);max-width:280px;line-height:1.6}
+.btn-start{
+  padding:14px 40px;background:var(--blue);color:#fff;border:none;
+  border-radius:12px;font-size:17px;font-weight:700;cursor:pointer
+}
+.st-err{font-size:12px;color:var(--red-light);min-height:16px}
+
+/* ── SETTINGS ────────────────────────────────────────────────── */
+#settings-btn{
+  position:fixed;top:7px;right:7px;z-index:300;
+  background:rgba(255,255,255,.07);border:none;color:var(--muted);
+  width:26px;height:26px;border-radius:50%;font-size:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center
+}
+#settings-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+  z-index:350;align-items:center;justify-content:center
+}
+#settings-modal.open{display:flex}
+.set-box{
+  background:var(--slate);border-radius:14px;padding:20px;
+  width:92%;max-width:360px;display:flex;flex-direction:column;gap:12px
+}
+.set-title{font-size:15px;font-weight:700}
+.set-lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
+.set-row{display:flex;gap:8px;align-items:center}
+input[type=text],input[type=number]{
+  width:100%;padding:8px 11px;background:rgba(255,255,255,.08);
+  border:1.5px solid rgba(255,255,255,.15);border-radius:8px;
+  color:var(--text);font-size:14px;outline:none;
+  -webkit-user-select:auto;user-select:auto
+}
+input:focus{border-color:var(--blue)}
+.sep{height:1px;background:rgba(255,255,255,.08)}
+.row2{display:flex;gap:8px}
+.btn-save{flex:2;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.btn-cls{flex:1;padding:10px;background:transparent;border:1.5px solid rgba(255,255,255,.15);color:var(--muted);border-radius:8px;font-size:13px;cursor:pointer}
+
+/* ── TOAST ───────────────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
+  background:var(--dim);color:var(--text);padding:7px 16px;
+  border-radius:20px;font-size:12px;opacity:0;transition:opacity .3s;
+  z-index:450;white-space:nowrap;pointer-events:none
+}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- START OVERLAY -->
+<div id="start-overlay">
+  <div class="st-title">ESD Kiosk</div>
+  <div class="st-sub">Mikrofon-Berechtigung wird benötigt.<br>USB-Barcode-Scanner bitte anschließen.</div>
+  <button class="btn-start" id="startBtn" onclick="startApp()">App starten</button>
+  <div class="st-err" id="startErr"></div>
+</div>
+
+<!-- WARN FLASH (Scanner vor ESD-Test) -->
+<div id="warn-flash">
+  <div class="wf-icon">⛔</div>
+  <div class="wf-text">Erst ESD Test durchführen!</div>
+  <div class="wf-sub">Barcode-Eingabe erst nach erfolgreichem Test möglich</div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings-modal">
+  <div class="set-box">
+    <div class="set-title">⚙️ Einstellungen</div>
+    <div>
+      <div class="set-lbl">Piepton-Erkennung</div>
+      <div class="set-row">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">Frequenz Hz:</span>
+        <input type="number" id="set-freq" value="2100" style="width:72px;text-align:center">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">± Toleranz:</span>
+        <input type="number" id="set-tol"  value="150"  style="width:62px;text-align:center">
+      </div>
+      <div class="set-row" style="margin-top:6px">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">Fenster für 2. Piepton (Sek):</span>
+        <input type="number" id="set-win" value="2.5" step="0.1" style="width:62px;text-align:center">
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="row2">
+      <button class="btn-save" onclick="saveSettings()">Speichern</button>
+      <button class="btn-cls"  onclick="closeSettings()">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- IDLE -->
+  <div class="screen active" id="screen-idle">
+    <div class="idle-title">Bitte ESD Test<br>durchführen</div>
+  </div>
+
+  <!-- BEEP 1 ERKANNT -->
+  <div class="screen" id="screen-beep1">
+    <div class="b1-title">ESD Test gestartet</div>
+    <div class="b1-sub">Warte auf Ergebnis…</div>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- SUCCESS: Barcode scannen -->
+  <div class="screen" id="screen-success">
+    <!-- Barcode-Symbol (SVG) -->
+    <div class="bc-scan-icon">
+      <svg width="110" height="70" viewBox="0 0 110 70" xmlns="http://www.w3.org/2000/svg" opacity=".85">
+        <rect x="4"  y="4" width="6"  height="55" fill="white" rx="1"/>
+        <rect x="13" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="19" y="4" width="7"  height="55" fill="white" rx="1"/>
+        <rect x="29" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="35" y="4" width="5"  height="55" fill="white" rx="1"/>
+        <rect x="43" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="49" y="4" width="8"  height="55" fill="white" rx="1"/>
+        <rect x="60" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="66" y="4" width="5"  height="55" fill="white" rx="1"/>
+        <rect x="74" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="80" y="4" width="7"  height="55" fill="white" rx="1"/>
+        <rect x="90" y="4" width="5"  height="55" fill="white" rx="1"/>
+        <rect x="98" y="4" width="3"  height="55" fill="white" rx="1"/>
+        <rect x="4"  y="62" width="100" height="2" fill="rgba(255,255,255,.3)" rx="1"/>
+      </svg>
+    </div>
+    <div class="bc-scan-title">Barcode scannen</div>
+    <div class="bc-scan-sub">USB-Scanner bereit — Barcode jetzt einscannen</div>
+    <button class="btn-manual" onclick="setAppState('numpad')">
+      🔢 &nbsp;Personalnummer manuell eingeben
+    </button>
+    <!-- Timer klein unten rechts -->
+    <div class="timer-corner">
+      <div style="position:relative;width:36px;height:36px">
+        <svg viewBox="0 0 36 36">
+          <circle class="tc-track" cx="18" cy="18" r="14"/>
+          <circle class="tc-ring"  cx="18" cy="18" r="14" id="timerRing"/>
+        </svg>
+        <div class="tc-num" id="timerNum">30</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NUMPAD -->
+  <div class="screen" id="screen-numpad">
+    <div class="np-wrap">
+      <!-- Links: Info + Display + Aktionen -->
+      <div class="np-left">
+        <div class="np-heading">Bitte Personalnummer<br>eintragen</div>
+        <div class="np-display">
+          <span id="nd0">_</span><span id="nd1">_</span><span id="nd2">_</span>
+          <span id="nd3">_</span><span id="nd4">_</span><span id="nd5">_</span>
+        </div>
+        <div class="np-range">Gültig: 100000 – 109999</div>
+        <div class="np-error" id="npError"></div>
+        <div class="np-actions">
+          <button class="btn-back"  onclick="setAppState('success')">← Zurück</button>
+          <button class="btn-abort" onclick="setAppState('idle')">✕ Abbrechen</button>
+        </div>
+      </div>
+      <!-- Rechts: Numpad-Grid -->
+      <div class="np-right">
+        <div class="np-grid">
+          <button onclick="npKey('7')">7</button>
+          <button onclick="npKey('8')">8</button>
+          <button onclick="npKey('9')">9</button>
+          <button onclick="npKey('4')">4</button>
+          <button onclick="npKey('5')">5</button>
+          <button onclick="npKey('6')">6</button>
+          <button onclick="npKey('1')">1</button>
+          <button onclick="npKey('2')">2</button>
+          <button onclick="npKey('3')">3</button>
+          <button class="np-del" onclick="npDel()">⌫</button>
+          <button onclick="npKey('0')">0</button>
+          <button class="np-ok" id="npOk" onclick="npConfirm()" disabled>✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVED -->
+  <div class="screen" id="screen-saved">
+    <div class="saved-check">✅</div>
+    <div class="saved-title">Gespeichert.<br>Vielen Dank!</div>
+    <div class="saved-sub" id="savedSub"></div>
+  </div>
+
+  <!-- FAIL -->
+  <div class="screen" id="screen-fail">
+    <div class="fail-icon">❌</div>
+    <div class="fail-title">Test fehlgeschlagen</div>
+    <div class="fail-sub">Armband prüfen und<br>erneut testen!</div>
+    <div class="fail-back" id="failBack">Zurück in 5 Sek…</div>
+  </div>
+
+</div>
+
+<button id="settings-btn" onclick="openSettings()">⚙</button>
+<div id="toast"></div>
+
+<script>
+// ── KONFIGURATION ─────────────────────────────────────────────────────────
+const FORMS_URL = "https://forms.office.com/formapi/api/8b206608-a593-4ace-a4b6-ef1fc83c9169/users/e568d74b-d6f0-4c39-a968-ea70cd733a9e/forms('CGYgi5Olzkqktu8fyDyRaUvXaOXw1jlMqWjqcM1zOp5UMERSSFpXTlUxMThISkVISVdBRU05R1RHVy4u')/responses";
+const Q_BARCODE = "r3ea481149afd4e01bab5d0bcaa487074";
+const Q_PERSON  = "r4c04e7585ba145418732a7dc2367f666";
+
+const CFG = {
+  get freq()      { return parseFloat(localStorage.getItem('freq'))  || 2100 },
+  get tolerance() { return parseFloat(localStorage.getItem('tol'))   || 150  },
+  get winSec()    { return parseFloat(localStorage.getItem('win'))   || 2.5  },
+};
+const SESSION_SEC  = 30;
+const BEEP_AMP_MIN = 28;
+const BEEP_MIN_MS  = 120;
+const BEEP_GAP_MIN = 200;
+const COOLDOWN_MS  = 5000;
+const CIRC_SMALL   = 2 * Math.PI * 14; // r=14
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let appState  = 'idle';
+let sesTimer  = null;
+let countdown = SESSION_SEC;
+
+// Scanner-Puffer
+let scanBuf   = '';
+let scanTimer = null;
+
+// Numpad
+let npValue   = '';
+
+// ── AUDIO STATE MACHINE ───────────────────────────────────────────────────
+let audioCtx, analyser;
+let beepPhase     = 'idle';
+let phaseStart    = 0;
+let beep1End      = 0;
+let cooldownStart = 0;
+
+async function initAudio() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 4096;
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  audioLoop();
+}
+
+function getPeak() {
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(buf);
+  let maxAmp = 0, maxBin = 0;
+  for (let i = 1; i < buf.length; i++) {
+    if (buf[i] > maxAmp) { maxAmp = buf[i]; maxBin = i; }
+  }
+  return { freq: maxBin * audioCtx.sampleRate / analyser.fftSize, amp: maxAmp };
+}
+
+function audioLoop() {
+  const { freq, amp } = getPeak();
+  const now = Date.now();
+  const hit = amp >= BEEP_AMP_MIN && Math.abs(freq - CFG.freq) <= CFG.tolerance;
+
+  switch (beepPhase) {
+
+    case 'idle':
+      if (hit) { beepPhase = 'beep1'; phaseStart = now; }
+      break;
+
+    case 'beep1':
+      if (!hit) {
+        if (now - phaseStart >= BEEP_MIN_MS) {
+          beep1End  = now;
+          beepPhase = 'between';
+          // UI: erster Piepton bestätigt
+          if (appState === 'idle') setAppState('beep1');
+        } else {
+          beepPhase = 'idle';
+        }
+      }
+      break;
+
+    case 'between':
+      if (now - beep1End > CFG.winSec * 1000) {
+        beepPhase = 'cooldown'; cooldownStart = now;
+        setAppState('fail');
+      } else if (hit && now - beep1End >= BEEP_GAP_MIN) {
+        beepPhase = 'beep2'; phaseStart = now;
+      }
+      break;
+
+    case 'beep2':
+      if (!hit) {
+        if (now - phaseStart >= BEEP_MIN_MS) {
+          beepPhase = 'cooldown'; cooldownStart = now;
+          setAppState('success');
+        } else {
+          beepPhase = 'between';
+        }
+      }
+      break;
+
+    case 'cooldown':
+      if (now - cooldownStart >= COOLDOWN_MS) {
+        beepPhase = 'idle';
+      }
+      break;
+  }
+
+  setTimeout(audioLoop, 40);
+}
+
+// ── BARCODE SCANNER (USB → Keyboard) ─────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+  // Eingabe nur im Scanner-Screen erlaubt
+  if (appState !== 'success') {
+    if (e.key === 'Enter' || e.key.length === 1) {
+      e.preventDefault();
+      if (appState === 'idle' || appState === 'beep1') flashWarn();
+    }
+    return;
+  }
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const code = scanBuf.trim();
+    scanBuf = '';
+    clearTimeout(scanTimer);
+    if (code.length >= 3) handleBarcode(code.trim());
+    return;
+  }
+
+  if (e.key.length === 1) {
+    scanBuf += e.key;
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => { scanBuf = ''; }, 200);
+  }
+});
+
+async function handleBarcode(code) {
+  if (appState !== 'success') return;
+  clearInterval(sesTimer);
+  await sendToForms(code, null);
+}
+
+// ── NUMPAD ────────────────────────────────────────────────────────────────
+function npKey(d) {
+  if (npValue.length >= 6) return;
+  document.getElementById('npError').textContent = '';
+  npValue += d;
+  renderNp();
+}
+function npDel() {
+  npValue = npValue.slice(0, -1);
+  document.getElementById('npError').textContent = '';
+  renderNp();
+}
+function npConfirm() {
+  const n = parseInt(npValue, 10);
+  if (npValue.length !== 6 || n < 100000 || n > 109999) {
+    document.getElementById('npError').textContent = '⚠ Ungültig – bitte 100000 bis 109999 eingeben';
+    return;
+  }
+  const val = npValue;
+  npValue = '';
+  renderNp();
+  sendToForms(null, val);
+}
+
+function renderNp() {
+  for (let i = 0; i < 6; i++) {
+    const el = document.getElementById('nd' + i);
+    if (!el) continue;
+    if (i < npValue.length)      { el.textContent = npValue[i]; el.className = 'filled'; }
+    else if (i === npValue.length){ el.textContent = '_';        el.className = 'cursor'; }
+    else                          { el.textContent = '_';        el.className = '';       }
+  }
+  const ok = document.getElementById('npOk');
+  if (ok) ok.disabled = npValue.length !== 6;
+}
+
+// ── SENDEN → Microsoft Forms (Hintergrund) ────────────────────────────────
+async function sendToForms(barcode, personalnummer) {
+  const now = new Date().toISOString();
+  const answers = JSON.stringify([
+    { questionId: Q_BARCODE, answer1: barcode      || '', answer2:null,answer3:null,answer4:null,answer5:null,answer6:null,answer7:null,answer8:null,answer9:null,answer10:null },
+    { questionId: Q_PERSON,  answer1: personalnummer|| '', answer2:null,answer3:null,answer4:null,answer5:null,answer6:null,answer7:null,answer8:null,answer9:null,answer10:null }
+  ]);
+
+  try {
+    const r = await fetch(FORMS_URL, {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:        JSON.stringify({ startDate: now, submitDate: now, answers })
+    });
+
+    if (r.ok || r.status === 201 || r.status === 202) {
+      const sub = barcode ? 'Barcode: ' + barcode : 'Personalnummer: ' + personalnummer;
+      const el  = document.getElementById('savedSub');
+      if (el) el.textContent = sub;
+      setAppState('saved');
+      setTimeout(() => setAppState('idle'), 2000);
+    } else {
+      showToast('Forms-Fehler ' + r.status + ' – bitte erneut versuchen');
+    }
+  } catch (e) {
+    showToast('Netzwerkfehler: ' + e.message);
+  }
+}
+
+// ── APP STATE ─────────────────────────────────────────────────────────────
+function setAppState(s) {
+  // Sicherheitscheck: kein Übergang von saved/fail zu success ohne neuen ESD-Test
+  if ((s === 'success' || s === 'beep1') && appState === 'saved') return;
+
+  appState = s;
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  const screen = document.getElementById('screen-' + s);
+  if (screen) screen.classList.add('active');
+  clearInterval(sesTimer);
+
+  if (s === 'success') {
+    npValue = ''; renderNp();
+    document.getElementById('npError').textContent = '';
+    startCountdown();
+  }
+
+  if (s === 'numpad') {
+    // Timer weiterlaufen lassen (sesTimer aktiv von success)
+    npValue = ''; renderNp();
+    document.getElementById('npError').textContent = '';
+  }
+
+  if (s === 'fail') {
+    let n = 5;
+    const el = document.getElementById('failBack');
+    if (el) el.textContent = 'Zurück in ' + n + ' Sek…';
+    const t = setInterval(() => {
+      n--;
+      if (el) el.textContent = 'Zurück in ' + n + ' Sek…';
+      if (n <= 0) { clearInterval(t); setAppState('idle'); }
+    }, 1000);
+  }
+
+  if (s === 'idle') {
+    scanBuf = ''; npValue = '';
+  }
+}
+
+// ── COUNTDOWN ─────────────────────────────────────────────────────────────
+function startCountdown() {
+  countdown = SESSION_SEC; renderTimer();
+  sesTimer = setInterval(() => {
+    countdown--;
+    renderTimer();
+    if (countdown <= 0) {
+      clearInterval(sesTimer);
+      setAppState('idle');
+    }
+  }, 1000);
+}
+
+function renderTimer() {
+  const n = document.getElementById('timerNum');
+  const r = document.getElementById('timerRing');
+  if (n) n.textContent = countdown;
+  if (r) r.style.strokeDashoffset = CIRC_SMALL * (1 - countdown / SESSION_SEC);
+}
+
+// ── WARN FLASH ────────────────────────────────────────────────────────────
+let warnT = null;
+function flashWarn() {
+  const el = document.getElementById('warn-flash');
+  el.classList.add('show');
+  clearTimeout(warnT);
+  warnT = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── EINSTELLUNGEN ─────────────────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('set-freq').value = CFG.freq;
+  document.getElementById('set-tol').value  = CFG.tolerance;
+  document.getElementById('set-win').value  = CFG.winSec;
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+function saveSettings() {
+  localStorage.setItem('freq', document.getElementById('set-freq').value);
+  localStorage.setItem('tol',  document.getElementById('set-tol').value);
+  localStorage.setItem('win',  document.getElementById('set-win').value);
+  closeSettings();
+  showToast('Einstellungen gespeichert');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────
+let toastT = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── START ─────────────────────────────────────────────────────────────────
+async function startApp() {
+  const btn = document.getElementById('startBtn');
+  const err = document.getElementById('startErr');
+  btn.disabled = true; btn.textContent = 'Starte…'; err.textContent = '';
+  try {
+    await initAudio();
+  } catch (e) {
+    err.textContent = 'Mikrofon verweigert: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Erneut versuchen'; return;
+  }
+  document.getElementById('start-overlay').style.display = 'none';
+  setAppState('idle');
+}
+
+// Bildschirm-Sperre verhindern
+async function keepAwake() {
+  if ('wakeLock' in navigator) {
+    try { await navigator.wakeLock.request('screen'); } catch(_) {}
+  }
+}
+keepAwake();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') keepAwake();
+});
+</script>
+</body>
+</html>
