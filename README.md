@@ -2,22 +2,21 @@ nano /home/esd-kiosk1/kiosk/start_kiosk.sh
 
 
 #!/bin/bash
-sleep 10
 
-# Chromium Session löschen
-rm -f "/home/esd-kiosk1/.config/chromium/Default/Last Session"
-rm -f "/home/esd-kiosk1/.config/chromium/Default/Last Tabs"
+# Warten bis Flask-Server antwortet
+until curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; do
+    sleep 1
+done
 
-# Kiosk starten
-chromium --start-fullscreen --noerrdialogs --disable-infobars \
-  --ozone-platform=wayland --password-store=basic \
-  http://localhost:8080
+sleep 2
+pkill wf-panel-pi 2>/dev/null
+sleep 1
 
+# Chromium über XWayland starten
+DISPLAY=:0 chromium --noerrdialogs --disable-infobars \
+  --password-store=basic \
+  http://127.0.0.1:8080 &
 
-  chmod +x /home/esd-kiosk1/kiosk/start_kiosk.sh
-
-
-nano /home/esd-kiosk1/.config/labwc/autostart
-
-
-/home/esd-kiosk1/kiosk/start_kiosk.sh &
+# Warten bis Fenster sichtbar, dann F11
+sleep 6
+DISPLAY=:0 xdotool search --sync --onlyvisible --name "Chromium" key F11
