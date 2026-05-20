@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>ESD Kiosk</title>
 <script>
-  // GPU-Init-Fix: beim ersten Aufruf nach Boot einmal neu laden
-  if (!sessionStorage.getItem('gpu_ready')) {
-    sessionStorage.setItem('gpu_ready', '1');
-    setTimeout(() => location.reload(), 2500);
+  // GPU-Init-Fix: alle 3s prüfen ob Seite gerendert, sonst neu laden
+  function checkRender() {
+    var bg = window.getComputedStyle(document.body).backgroundColor;
+    if (bg === 'rgb(255, 255, 255)' || bg === 'rgba(0, 0, 0, 0)' || bg === '') {
+      location.reload();
+    }
   }
+  setTimeout(checkRender, 3000);
+  setTimeout(checkRender, 7000);
+  setTimeout(checkRender, 12000);
 </script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
