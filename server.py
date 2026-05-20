@@ -134,6 +134,14 @@ def submit():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@app.route("/shutdown-kiosk", methods=["POST"])
+def shutdown_kiosk():
+    """Chromium beenden (wird per 5x ESC aus dem Kiosk aufgerufen)."""
+    import subprocess
+    subprocess.Popen(["pkill", "chromium"])
+    return jsonify({"ok": True}), 200
+
+
 def _log_local(barcode, person, ts, reason):
     """Fallback: Daten in lokale CSV schreiben wenn Forms nicht erreichbar."""
     log_path = os.path.join(BASE_DIR, "esd_offline_log.csv")
