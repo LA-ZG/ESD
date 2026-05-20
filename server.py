@@ -5,6 +5,7 @@ ESD Kiosk - Lokaler Flask-Proxy-Server fuer Raspberry Pi
 Startet einen Webserver auf Port 8080.
 - GET  /          -> liefert esd_kiosk.html
 - POST /submit    -> leitet Formulardaten an Microsoft Forms weiter
+- POST /shutdown-kiosk -> beendet Chromium (Taskleiste wird von start_kiosk.sh wiederhergestellt)
 
 Kein CORS-Problem, da Browser nur localhost anspricht.
 
@@ -14,14 +15,18 @@ Installation (einmalig auf dem Pi):
 Starten:
   python3 server.py
 
-Autostart beim Boot: siehe Anleitung unten (systemd).
+Autostart beim Boot: systemd-Service esd-kiosk.service
 """
 
 import json
 import os
 import requests
+import urllib3
 from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime, timezone
+
+# SSL-Warnung unterdrücken (Pi-Uhr kann abweichen)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -61,6 +66,7 @@ def static_files(filename):
 # ------------------------------------------------------------------ #
 @app.route("/submit", methods=["POST"])
 def submit():
+    data = {}
     try:
         data = request.get_json(force=True)
         barcode        = (data.get("barcode")        or "").strip()
@@ -97,7 +103,6 @@ def submit():
         headers = {
             "Content-Type": "application/json",
             "Accept":       "application/json",
-            # Referer damit Forms den Request akzeptiert
             "Referer":      "https://forms.office.com/",
             "Origin":       "https://forms.office.com",
             "User-Agent":   "Mozilla/5.0 (ESD-Kiosk/1.0)"
@@ -107,7 +112,8 @@ def submit():
             FORMS_URL,
             json=payload,
             headers=headers,
-            timeout=10
+            timeout=10,
+            verify=False   # SSL-Prüfung deaktiviert (Pi-Uhr-Problem)
         )
 
         if resp.status_code in (200, 201, 202):
@@ -116,34 +122,32 @@ def submit():
             return jsonify({"ok": True}), 200
         else:
             print(f"[ERR] Forms antwortete {resp.status_code}: {resp.text[:200]}")
-            # Trotzdem als Erfolg zurueckgeben, damit der Kiosk weiterlaueft.
-            # Daten werden lokal geloggt (siehe unten).
             _log_local(barcode, personalnummer, now,
                        f"Forms-Fehler {resp.status_code}")
             return jsonify({"ok": True, "warn": f"Forms {resp.status_code}"}), 200
 
     except requests.exceptions.ConnectionError:
-        # Kein Netz -> lokal speichern, trotzdem OK zurueck
         now = datetime.now(timezone.utc).isoformat()
-        _log_local(data.get("barcode",""), data.get("personalnummer",""),
+        _log_local(data.get("barcode", ""), data.get("personalnummer", ""),
                    now, "Kein Netzwerk")
         return jsonify({"ok": True, "warn": "Offline - lokal gespeichert"}), 200
 
     except Exception as exc:
         print(f"[EXCEPTION] {exc}")
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            _log_local(data.get("barcode", ""), data.get("personalnummer", ""),
+                       now, f"Exception: {exc}")
+        except Exception:
+            pass
+        return jsonify({"ok": True, "warn": str(exc)}), 200
 
 
 @app.route("/shutdown-kiosk", methods=["POST"])
 def shutdown_kiosk():
-    """Chromium beenden und Taskleiste wiederherstellen."""
-    import subprocess, threading, time
-    def do_shutdown():
-        time.sleep(0.5)
-        subprocess.Popen(["pkill", "chromium"])
-        time.sleep(1)
-        subprocess.Popen(["/usr/bin/wf-panel-pi"])
-    threading.Thread(target=do_shutdown, daemon=True).start()
+    """Chromium beenden - Taskleiste wird von start_kiosk.sh wiederhergestellt."""
+    import subprocess
+    subprocess.Popen(["pkill", "chromium"])
     return jsonify({"ok": True}), 200
 
 
