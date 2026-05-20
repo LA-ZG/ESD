@@ -136,9 +136,14 @@ def submit():
 
 @app.route("/shutdown-kiosk", methods=["POST"])
 def shutdown_kiosk():
-    """Chromium beenden (wird per 5x ESC aus dem Kiosk aufgerufen)."""
-    import subprocess
-    subprocess.Popen(["pkill", "chromium"])
+    """Chromium beenden und Taskleiste wiederherstellen."""
+    import subprocess, threading, time
+    def do_shutdown():
+        time.sleep(0.5)
+        subprocess.Popen(["pkill", "chromium"])
+        time.sleep(1)
+        subprocess.Popen(["/usr/bin/wf-panel-pi"])
+    threading.Thread(target=do_shutdown, daemon=True).start()
     return jsonify({"ok": True}), 200
 
 
