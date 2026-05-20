@@ -632,6 +632,22 @@ function saveCfg() {
 }
 
 // ================================================================
+// KIOSK BEENDEN: 5x ESC schnell hintereinander
+// ================================================================
+let escCount = 0, escTimer;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    escCount++;
+    clearTimeout(escTimer);
+    escTimer = setTimeout(() => { escCount = 0; }, 2000);
+    if (escCount >= 5) {
+      escCount = 0;
+      fetch('/shutdown-kiosk', { method: 'POST' }).catch(() => {});
+    }
+  }
+});
+
+// ================================================================
 // WAKE LOCK
 // ================================================================
 async function requestWakeLock() {
