@@ -1,17 +1,6 @@
-nano /home/esd-kiosk1/kiosk/start_kiosk.sh
+nano /home/esd-kiosk1/Desktop/Kiosk-Starten.sh
 
 #!/bin/bash
-
-env | sort > /home/esd-kiosk1/kiosk/autostart_env.txt
-
-# Warten bis Desktop bereit
-until pgrep -u "$(id -u)" pcmanfm-pi > /dev/null 2>&1; do sleep 1; done
-sleep 3
-
-# Warten bis Flask antwortet
-until curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; do sleep 1; done
-
-# Sessions löschen + Preferences reparieren
 rm -rf "/home/esd-kiosk1/.config/chromium/Default/Sessions/"* 2>/dev/null
 python3 -c "
 import json, os
@@ -22,26 +11,16 @@ if os.path.exists(p):
     d['profile']['exited_cleanly'] = True
     with open(p, 'w') as f: json.dump(d, f)
 " 2>/dev/null
-
-# Panel beenden
 pkill -f "lwrespawn.*wf-panel" 2>/dev/null
-sleep 1
+sleep 0.5
 pkill wf-panel-pi 2>/dev/null
-sleep 1
-
-# Chromium starten - ohne Google-Dienste (verhindert SSL-Timeout bei falschem Datum)
+sleep 0.5
 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR="/run/user/$(id -u)" \
-chromium --start-fullscreen \
-  --noerrdialogs --disable-infobars \
+chromium --kiosk --noerrdialogs --disable-infobars \
   --ozone-platform=wayland --password-store=basic \
-  --disable-background-networking \
-  --disable-sync \
-  --no-first-run \
+  --disable-background-networking --disable-sync --no-first-run \
   --disable-features=Translate,SafeBrowsing \
-  http://127.0.0.1:8080 &
+  http://127.0.0.1:8080
 
-# F5 senden sobald GPU bereit (mehrfach als Backup)
-sleep 12
-WAYLAND_DISPLAY=wayland-0 wtype -k F5
-sleep 8
-WAYLAND_DISPLAY=wayland-0 wtype -k F5
+
+  chmod +x /home/esd-kiosk1/Desktop/Kiosk-Starten.sh
