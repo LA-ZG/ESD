@@ -2,6 +2,8 @@ nano /home/esd-kiosk1/kiosk/start_kiosk.sh
 
 #!/bin/bash
 
+env | sort > /home/esd-kiosk1/kiosk/autostart_env.txt
+
 # Warten bis Desktop bereit
 until pgrep -u "$(id -u)" pcmanfm-pi > /dev/null 2>&1; do sleep 1; done
 sleep 3
@@ -22,6 +24,8 @@ if os.path.exists(p):
 " 2>/dev/null
 
 # Panel beenden
+pkill -f "lwrespawn.*wf-panel" 2>/dev/null
+sleep 1
 pkill wf-panel-pi 2>/dev/null
 sleep 1
 
