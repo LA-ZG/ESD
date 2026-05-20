@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>ESD Kiosk</title>
 <script>
-  // GPU-Init-Fix: alle 3s prüfen ob Seite gerendert, sonst neu laden
+  // GPU-Init-Fix: prüfen ob Seite gerendert, sonst neu laden
   function checkRender() {
     var bg = window.getComputedStyle(document.body).backgroundColor;
     if (bg === 'rgb(255, 255, 255)' || bg === 'rgba(0, 0, 0, 0)' || bg === '') {
@@ -678,7 +678,7 @@ function onBeep(now) {
 }
 
 // ================================================================
-// PIN-SCHUTZ FÜR EINSTELLUNGEN
+// PIN-SCHUTZ FUER EINSTELLUNGEN
 // ================================================================
 const SETTINGS_PIN = '4930';
 let pinBuf = '';
